@@ -97,7 +97,17 @@ function AgentPanel({
         { role: m.role === "user" ? "user" : "agent", text: m.message },
       ]);
     },
-    onError: (message) => setSetupError(String(message)),
+    onError: (message) => setSetupError(`Error de ElevenLabs: ${String(message)}`),
+    onDisconnect: (details) => {
+      if (details.reason === "user") return;
+      const extra =
+        details.reason === "error"
+          ? details.message
+          : details.closeReason || (details.closeCode ? `código ${details.closeCode}` : "");
+      setSetupError(
+        `La conexión se cortó (${details.reason === "agent" ? "cerrada por el agente" : "error"})${extra ? `: ${extra}` : ""}.`,
+      );
+    },
   });
 
   const { status, isSpeaking } = conversation;
@@ -116,22 +126,31 @@ function AgentPanel({
     return () => clearInterval(t);
   }, [connected, getInputVolume]);
 
-  async function start() {
+  async function start(transport: "webrtc" | "websocket" = "webrtc") {
     setSetupError(null);
     setStarting(true);
     try {
-      const res = await fetch("/api/agent/session", { cache: "no-store" });
-      const data = (await res.json()) as { token?: string; message?: string };
-      if (!res.ok || !data.token) {
+      const res = await fetch(`/api/agent/session?transport=${transport}`, {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        token?: string;
+        signedUrl?: string;
+        message?: string;
+      };
+      if (!res.ok || !(data.token || data.signedUrl)) {
         setSetupError(
           data.message ?? "No se pudo crear la sesión con ElevenLabs.",
         );
         return;
       }
       setTranscript([]);
+      const connection =
+        transport === "websocket" && data.signedUrl
+          ? { signedUrl: data.signedUrl, connectionType: "websocket" as const }
+          : { conversationToken: data.token!, connectionType: "webrtc" as const };
       conversation.startSession({
-        conversationToken: data.token,
-        connectionType: "webrtc",
+        ...connection,
         clientTools,
         dynamicVariables: {
           modo: mode === "puerta" ? "soporte_puerta" : "checkout",
@@ -184,7 +203,7 @@ function AgentPanel({
           {!connected ? (
             <button
               type="button"
-              onClick={start}
+              onClick={() => start()}
               disabled={starting || status === "connecting"}
               className="rounded-full bg-teal-700 px-6 py-3 font-medium text-white shadow transition hover:bg-teal-800 disabled:opacity-60"
             >
@@ -213,9 +232,18 @@ function AgentPanel({
             </div>
           )}
           {setupError && (
-            <p role="alert" className="max-w-md rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              {setupError}
-            </p>
+            <div role="alert" className="max-w-md space-y-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              <p>{setupError}</p>
+              {!connected && (
+                <button
+                  type="button"
+                  onClick={() => start("websocket")}
+                  className="rounded-full border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
+                >
+                  Reintentar con conexión alternativa
+                </button>
+              )}
+            </div>
           )}
         </div>
 
