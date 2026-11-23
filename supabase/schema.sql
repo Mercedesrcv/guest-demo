@@ -12,3 +12,8 @@ create index if not exists demo_records_kind_created_idx
 
 -- Solo el servidor (service role) accede. Sin políticas = nadie más puede leer ni escribir.
 alter table public.demo_records enable row level security;
+
+-- Supabase ya no concede permisos automáticamente a las tablas nuevas:
+-- el rol del servidor (secret / service_role key) necesita acceso explícito.
+grant usage on schema public to service_role;
+grant all on table public.demo_records to service_role;
