@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import type { GuestReservation } from "./GuestProvider";
 import type { Lang } from "@/lib/types";
@@ -103,6 +103,19 @@ function AgentPanel({
   const { status, isSpeaking } = conversation;
   const connected = status === "connected";
 
+  // Live microphone level, so the guest (and you, in a demo) can see whether the page hears them.
+  const [micLevel, setMicLevel] = useState(0);
+  const getInputVolume = conversation.getInputVolume;
+  useEffect(() => {
+    if (!connected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMicLevel(0);
+      return;
+    }
+    const t = setInterval(() => setMicLevel(getInputVolume()), 120);
+    return () => clearInterval(t);
+  }, [connected, getInputVolume]);
+
   async function start() {
     setSetupError(null);
     setStarting(true);
@@ -185,6 +198,19 @@ function AgentPanel({
             >
               Terminar conversación
             </button>
+          )}
+          {connected && (
+            <div className="w-full max-w-xs" aria-label="Nivel del micrófono">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-teal-500 transition-[width] duration-100"
+                  style={{ width: `${Math.min(100, Math.round(micLevel * 400))}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Micrófono: si la barra no se mueve cuando hablas, el navegador no te oye (revisa el micrófono elegido).
+              </p>
+            </div>
           )}
           {setupError && (
             <p role="alert" className="max-w-md rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
